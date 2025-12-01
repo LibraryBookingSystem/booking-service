@@ -26,18 +26,10 @@ spring:
     username: ${RABBITMQ_USER:admin}
     password: ${RABBITMQ_PASS:admin}
 
-# External service URLs
-policy:
-  service:
-    url: ${POLICY_SERVICE_URL:http://localhost:3005}
-
-catalog:
-  service:
-    url: ${CATALOG_SERVICE_URL:http://localhost:3003}
-
-user:
-  service:
-    url: ${USER_SERVICE_URL:http://localhost:3001}
+# External service URLs (flat format for easier access)
+policy-service-url: ${POLICY_SERVICE_URL:http://localhost:3005}
+catalog-service-url: ${CATALOG_SERVICE_URL:http://localhost:3003}
+user-service-url: ${USER_SERVICE_URL:http://localhost:3001}
 
 # Logging
 logging:

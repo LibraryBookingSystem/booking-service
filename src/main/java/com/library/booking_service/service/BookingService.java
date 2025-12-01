@@ -37,13 +37,13 @@ public class BookingService {
     private final RestTemplate restTemplate;
     private final BookingEventPublisher eventPublisher;
     
-    @Value("${policy.service.url:http://localhost:3005}")
+    @Value("${policy-service-url:http://localhost:3005}")
     private String policyServiceUrl;
     
-    @Value("${catalog.service.url:http://localhost:3003}")
+    @Value("${catalog-service-url:http://localhost:3003}")
     private String catalogServiceUrl;
     
-    @Value("${user.service.url:http://localhost:3001}")
+    @Value("${user-service-url:http://localhost:3001}")
     private String userServiceUrl;
     
     public BookingService(BookingRepository bookingRepository,
@@ -61,53 +61,70 @@ public class BookingService {
     public BookingResponse createBooking(Long userId, CreateBookingRequest request) {
         logger.info("Creating booking for user: {} and resource: {}", userId, request.getResourceId());
         
-        // 1. Verify user is not restricted
-        verifyUserNotRestricted(userId);
-        
-        // 2. Verify resource exists and is available
-        verifyResourceAvailable(request.getResourceId());
-        
-        // 3. Check for overlapping bookings
-        List<Booking> overlapping = bookingRepository.findOverlappingBookings(
-            request.getResourceId(), request.getStartTime(), request.getEndTime());
-        if (!overlapping.isEmpty()) {
-            throw new ResourceUnavailableException(
-                "Resource is already booked for the requested time slot");
+        try {
+            // 1. Verify user is not restricted
+            verifyUserNotRestricted(userId);
+            
+            // 2. Verify resource exists and is available
+            verifyResourceAvailable(request.getResourceId());
+            
+            // 3. Check for overlapping bookings
+            List<Booking> overlapping = bookingRepository.findOverlappingBookings(
+                request.getResourceId(), request.getStartTime(), request.getEndTime());
+            if (!overlapping.isEmpty()) {
+                throw new ResourceUnavailableException(
+                    "Resource is already booked for the requested time slot");
+            }
+            
+            // 4. Get current booking count for user
+            int currentBookingCount = bookingRepository.findActiveBookingsByUserId(userId).size();
+            
+            // 5. Validate against policies
+            PolicyValidationRequest policyRequest = new PolicyValidationRequest(
+                request.getStartTime(),
+                request.getEndTime(),
+                userId,
+                currentBookingCount
+            );
+            
+            PolicyValidationResponse policyValidation = validateWithPolicyService(policyRequest);
+            if (!policyValidation.isValid()) {
+                throw new ResourceUnavailableException(
+                    "Booking violates policy: " + String.join(", ", policyValidation.getViolations()));
+            }
+            
+            // 6. Create booking
+            Booking booking = new Booking();
+            booking.setUserId(userId);
+            booking.setResourceId(request.getResourceId());
+            booking.setStartTime(request.getStartTime());
+            booking.setEndTime(request.getEndTime());
+            booking.setStatus(BookingStatus.CONFIRMED);
+            booking.setQrCode(generateQRCode());
+            
+            booking = bookingRepository.save(booking);
+            logger.info("Booking created successfully: {} (ID: {})", booking.getQrCode(), booking.getId());
+            
+            BookingResponse response = BookingResponse.fromBooking(booking);
+            eventPublisher.publishBookingCreated(response);
+            
+            return response;
+        } catch (ResourceUnavailableException e) {
+            logger.error("Resource unavailable: {}", e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            logger.error("Unexpected error creating booking: {}", e.getMessage(), e);
+            throw new ResourceUnavailableException("Failed to create booking: " + e.getMessage());
         }
-        
-        // 4. Get current booking count for user
-        int currentBookingCount = bookingRepository.findActiveBookingsByUserId(userId).size();
-        
-        // 5. Validate against policies
-        PolicyValidationRequest policyRequest = new PolicyValidationRequest(
-            request.getStartTime(),
-            request.getEndTime(),
-            userId,
-            currentBookingCount
-        );
-        
-        PolicyValidationResponse policyValidation = validateWithPolicyService(policyRequest);
-        if (!policyValidation.isValid()) {
-            throw new ResourceUnavailableException(
-                "Booking violates policy: " + String.join(", ", policyValidation.getViolations()));
-        }
-        
-        // 6. Create booking
-        Booking booking = new Booking();
-        booking.setUserId(userId);
-        booking.setResourceId(request.getResourceId());
-        booking.setStartTime(request.getStartTime());
-        booking.setEndTime(request.getEndTime());
-        booking.setStatus(BookingStatus.CONFIRMED);
-        booking.setQrCode(generateQRCode());
-        
-        booking = bookingRepository.save(booking);
-        logger.info("Booking created successfully: {} (ID: {})", booking.getQrCode(), booking.getId());
-        
-        BookingResponse response = BookingResponse.fromBooking(booking);
-        eventPublisher.publishBookingCreated(response);
-        
-        return response;
+    }
+    
+    /**
+     * Get all bookings
+     */
+    public List<BookingResponse> getAllBookings() {
+        return bookingRepository.findAll().stream()
+            .map(BookingResponse::fromBooking)
+            .collect(Collectors.toList());
     }
     
     /**
@@ -318,6 +335,8 @@ public class BookingService {
     private void verifyResourceAvailable(Long resourceId) {
         try {
             String url = catalogServiceUrl + "/api/resources/" + resourceId;
+            logger.debug("Checking resource availability at: {}", url);
+            
             ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
                 url,
                 HttpMethod.GET,
@@ -326,13 +345,18 @@ public class BookingService {
             );
             
             if (response.getStatusCode() != HttpStatus.OK) {
+                logger.error("Resource check returned status: {} for resourceId: {}", response.getStatusCode(), resourceId);
                 throw new ResourceUnavailableException("Resource not found: " + resourceId);
             }
             
+            logger.debug("Resource {} is available", resourceId);
             // Could also check resource status here if needed
+        } catch (org.springframework.web.client.HttpClientErrorException.NotFound e) {
+            logger.error("Resource not found: {} - {}", resourceId, e.getMessage());
+            throw new ResourceUnavailableException("Resource not found: " + resourceId);
         } catch (RestClientException e) {
-            logger.error("Failed to verify resource: {}", e.getMessage());
-            throw new ResourceUnavailableException("Resource not available: " + resourceId);
+            logger.error("Failed to verify resource {}: {} - Error: {}", resourceId, e.getMessage(), e.getClass().getName(), e);
+            throw new ResourceUnavailableException("Failed to verify resource availability: " + e.getMessage());
         }
     }
     
@@ -342,14 +366,23 @@ public class BookingService {
     private PolicyValidationResponse validateWithPolicyService(PolicyValidationRequest request) {
         try {
             String url = policyServiceUrl + "/api/policies/validate";
+            logger.debug("Validating booking with policy service at: {}", url);
+            
             ResponseEntity<PolicyValidationResponse> response = restTemplate.postForEntity(
                 url, request, PolicyValidationResponse.class);
             
             if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
+                logger.debug("Policy validation result: valid={}", response.getBody().isValid());
                 return response.getBody();
             }
+        } catch (org.springframework.web.client.ResourceAccessException e) {
+            logger.warn("Policy service unavailable (connection failed): {} - Continuing with validation passed", e.getMessage());
+            // Return valid if policy service is unavailable (fail open)
+            PolicyValidationResponse validation = new PolicyValidationResponse();
+            validation.setValid(true);
+            return validation;
         } catch (RestClientException e) {
-            logger.error("Failed to validate with policy service: {}", e.getMessage());
+            logger.warn("Failed to validate with policy service: {} - Continuing with validation passed", e.getMessage());
             // Return valid if policy service is unavailable (fail open)
             PolicyValidationResponse validation = new PolicyValidationResponse();
             validation.setValid(true);
@@ -357,6 +390,7 @@ public class BookingService {
         }
         
         // Default to valid if validation fails
+        logger.warn("Policy validation returned no result, defaulting to valid");
         PolicyValidationResponse validation = new PolicyValidationResponse();
         validation.setValid(true);
         return validation;

@@ -44,6 +44,16 @@ public class BookingController {
     }
     
     /**
+     * Get all bookings
+     * GET /api/bookings
+     */
+    @GetMapping
+    public ResponseEntity<List<BookingResponse>> getAllBookings() {
+        List<BookingResponse> bookings = bookingService.getAllBookings();
+        return ResponseEntity.ok(bookings);
+    }
+    
+    /**
      * Get booking by ID
      * GET /api/bookings/{id}
      */
