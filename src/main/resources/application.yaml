@@ -1,0 +1,47 @@
+server:
+  port: 3004
+
+spring:
+  application:
+    name: booking-service
+  
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5433}/${DB_NAME:booking_db}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+  
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+  
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:admin}
+    password: ${RABBITMQ_PASS:admin}
+
+# External service URLs
+policy:
+  service:
+    url: ${POLICY_SERVICE_URL:http://localhost:3005}
+
+catalog:
+  service:
+    url: ${CATALOG_SERVICE_URL:http://localhost:3003}
+
+user:
+  service:
+    url: ${USER_SERVICE_URL:http://localhost:3001}
+
+# Logging
+logging:
+  level:
+    com.library: DEBUG
+    org.springframework: INFO
+
