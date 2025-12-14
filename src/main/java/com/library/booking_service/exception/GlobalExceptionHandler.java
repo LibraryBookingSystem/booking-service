@@ -1,5 +1,6 @@
 package com.library.booking_service.exception;
 
+import com.library.common.exception.ForbiddenException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -14,10 +15,11 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Global exception handler for the booking service
+ * Exception handler for Booking Service.
+ * Extends common GlobalExceptionHandler.
  */
 @RestControllerAdvice
-public class GlobalExceptionHandler {
+public class GlobalExceptionHandler extends com.library.common.exception.GlobalExceptionHandler {
     
     private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
     
@@ -54,6 +56,12 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
     }
     
+    @Override
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<Map<String, String>> handleForbiddenException(ForbiddenException ex) {
+        return super.handleForbiddenException(ex);
+    }
+    
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, Object>> handleValidationExceptions(MethodArgumentNotValidException ex) {
         Map<String, String> errors = new HashMap<>();
@@ -69,17 +77,6 @@ public class GlobalExceptionHandler {
         response.put("timestamp", LocalDateTime.now());
         
         return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
-    }
-    
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<ErrorResponse> handleGlobalException(Exception ex) {
-        logger.error("Unexpected error: ", ex);
-        ErrorResponse error = new ErrorResponse(
-            HttpStatus.INTERNAL_SERVER_ERROR.value(),
-            "An unexpected error occurred",
-            LocalDateTime.now()
-        );
-        return new ResponseEntity<>(error, HttpStatus.INTERNAL_SERVER_ERROR);
     }
     
     public static class ErrorResponse {
@@ -98,7 +95,3 @@ public class GlobalExceptionHandler {
         public LocalDateTime getTimestamp() { return timestamp; }
     }
 }
-
-
-
-

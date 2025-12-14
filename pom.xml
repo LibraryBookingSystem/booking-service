@@ -75,6 +75,13 @@
 			<scope>runtime</scope>
 		</dependency>
 		
+		<!-- Common Aspects Library -->
+		<dependency>
+			<groupId>com.library</groupId>
+			<artifactId>common-aspects</artifactId>
+			<version>1.0.0</version>
+		</dependency>
+		
 		<!-- Testing -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -102,6 +109,7 @@
 		</plugins>
 	</build>
 </project>
+
 
 
 

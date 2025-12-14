@@ -6,6 +6,7 @@ import com.library.booking_service.entity.BookingStatus;
 import com.library.booking_service.exception.BookingNotFoundException;
 import com.library.booking_service.exception.InvalidCheckInException;
 import com.library.booking_service.exception.ResourceUnavailableException;
+import com.library.common.exception.ForbiddenException;
 import com.library.booking_service.repository.BookingRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -243,11 +244,17 @@ public class BookingService {
      * Check-in to booking using QR code
      */
     @Transactional
-    public BookingResponse checkIn(String qrCode) {
-        logger.info("Processing check-in for QR code: {}", qrCode);
+    public BookingResponse checkIn(String qrCode, Long userId, String role) {
+        logger.info("Processing check-in for QR code: {} by user: {}", qrCode, userId);
         
         Booking booking = bookingRepository.findByQrCode(qrCode)
-            .orElseThrow(() -> new InvalidCheckInException("Invalid QR code"));
+                .orElseThrow(() -> new InvalidCheckInException("Invalid QR code"));
+        
+        // Validate ownership: user must own the booking OR be an admin
+        if (!booking.getUserId().equals(userId) && !"ADMIN".equals(role)) {
+            throw new ForbiddenException(
+                "You do not have permission to check in to this booking");
+        }
         
         // Validate check-in
         LocalDateTime now = LocalDateTime.now();
