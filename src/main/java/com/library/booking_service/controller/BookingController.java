@@ -9,6 +9,8 @@ import com.library.common.security.annotation.RequiresRole;
 import com.library.booking_service.service.BookingService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -22,13 +24,14 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/bookings")
 public class BookingController {
-    
+
+    private static final Logger logger = LoggerFactory.getLogger(BookingController.class);
     private final BookingService bookingService;
-    
+
     public BookingController(BookingService bookingService) {
         this.bookingService = bookingService;
     }
-    
+
     /**
      * Create a new booking
      * POST /api/bookings
@@ -41,22 +44,32 @@ public class BookingController {
             @Valid @RequestBody CreateBookingRequest request,
             HttpServletRequest httpRequest) {
         Long userId = (Long) httpRequest.getAttribute("userId");
-        BookingResponse response = bookingService.createBooking(userId, request);
+        // Extract Authorization header to forward to other services
+        String authHeader = httpRequest.getHeader("Authorization");
+        if (authHeader == null) {
+            // Try case-insensitive header names
+            authHeader = httpRequest.getHeader("authorization");
+        }
+        BookingResponse response = bookingService.createBooking(userId, request, authHeader);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
-    
+
     /**
      * Get all bookings
      * GET /api/bookings
      * Authorization: ADMIN only
      */
     @GetMapping
-    @RequiresRole({"ADMIN"})
-    public ResponseEntity<List<BookingResponse>> getAllBookings() {
-        List<BookingResponse> bookings = bookingService.getAllBookings();
+    @RequiresRole({ "ADMIN" })
+    public ResponseEntity<List<BookingResponse>> getAllBookings(HttpServletRequest httpRequest) {
+        String authHeader = httpRequest.getHeader("Authorization");
+        if (authHeader == null) {
+            authHeader = httpRequest.getHeader("authorization");
+        }
+        List<BookingResponse> bookings = bookingService.getAllBookings(authHeader);
         return ResponseEntity.ok(bookings);
     }
-    
+
     /**
      * Get booking by ID
      * GET /api/bookings/{id}
@@ -66,16 +79,23 @@ public class BookingController {
     @GetMapping("/{id}")
     @RequiresRole
     @RequiresBookingOwnership(bookingIdParam = "id")
-    public ResponseEntity<BookingResponse> getBookingById(@PathVariable Long id) {
-        BookingResponse response = bookingService.getBookingById(id);
+    public ResponseEntity<BookingResponse> getBookingById(
+            @PathVariable Long id,
+            HttpServletRequest httpRequest) {
+        String authHeader = httpRequest.getHeader("Authorization");
+        if (authHeader == null) {
+            authHeader = httpRequest.getHeader("authorization");
+        }
+        BookingResponse response = bookingService.getBookingById(id, authHeader);
         return ResponseEntity.ok(response);
     }
-    
+
     /**
      * Get bookings by user ID
      * GET /api/bookings/user/{userId}
      * Authorization: AUTHENTICATED
-     * Resource Ownership: Users can only view their own bookings, Admins can view any
+     * Resource Ownership: Users can only view their own bookings, Admins can view
+     * any
      */
     @GetMapping("/user/{userId}")
     @RequiresRole
@@ -84,16 +104,20 @@ public class BookingController {
             HttpServletRequest request) {
         Long authenticatedUserId = (Long) request.getAttribute("userId");
         String role = (String) request.getAttribute("userRole");
-        
+
         // Check ownership: users can only view their own bookings, admins can view any
         if (!authenticatedUserId.equals(userId) && !"ADMIN".equals(role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
-        
-        List<BookingResponse> bookings = bookingService.getBookingsByUserId(userId);
+
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader == null) {
+            authHeader = request.getHeader("authorization");
+        }
+        List<BookingResponse> bookings = bookingService.getBookingsByUserId(userId, authHeader);
         return ResponseEntity.ok(bookings);
     }
-    
+
     /**
      * Get bookings by resource ID
      * GET /api/bookings/resource/{resourceId}
@@ -101,22 +125,30 @@ public class BookingController {
      */
     @GetMapping("/resource/{resourceId}")
     @RequiresRole
-    public ResponseEntity<List<BookingResponse>> getBookingsByResourceId(@PathVariable Long resourceId) {
-        List<BookingResponse> bookings = bookingService.getBookingsByResourceId(resourceId);
+    public ResponseEntity<List<BookingResponse>> getBookingsByResourceId(
+            @PathVariable Long resourceId,
+            HttpServletRequest httpRequest) {
+        String authHeader = httpRequest.getHeader("Authorization");
+        if (authHeader == null) {
+            authHeader = httpRequest.getHeader("authorization");
+        }
+        List<BookingResponse> bookings = bookingService.getBookingsByResourceId(resourceId, authHeader);
         return ResponseEntity.ok(bookings);
     }
-    
+
     /**
      * Update booking
      * PUT /api/bookings/{id}
      * Authorization: AUTHENTICATED
-     * Resource Ownership: Users can only update their own bookings, Admins can update any
+     * Resource Ownership: Users can only update their own bookings, Admins can
+     * update any
      */
     /**
      * Update booking
      * PUT /api/bookings/{id}
      * Authorization: AUTHENTICATED
-     * Resource Ownership: Users can only update their own bookings, Admins can update any
+     * Resource Ownership: Users can only update their own bookings, Admins can
+     * update any
      */
     @PutMapping("/{id}")
     @RequiresRole
@@ -126,15 +158,18 @@ public class BookingController {
             @Valid @RequestBody UpdateBookingRequest request,
             HttpServletRequest httpRequest) {
         Long userId = (Long) httpRequest.getAttribute("userId");
-        BookingResponse response = bookingService.updateBooking(id, userId, request);
+        // Extract Authorization header to forward to other services
+        String authHeader = httpRequest.getHeader("Authorization");
+        BookingResponse response = bookingService.updateBooking(id, userId, request, authHeader);
         return ResponseEntity.ok(response);
     }
-    
+
     /**
      * Cancel booking
      * DELETE /api/bookings/{id}
      * Authorization: AUTHENTICATED
-     * Resource Ownership: Users can only cancel their own bookings, Admins can cancel any
+     * Resource Ownership: Users can only cancel their own bookings, Admins can
+     * cancel any
      */
     @DeleteMapping("/{id}")
     @RequiresRole
@@ -144,10 +179,14 @@ public class BookingController {
             HttpServletRequest httpRequest) {
         Long userId = (Long) httpRequest.getAttribute("userId");
         String role = (String) httpRequest.getAttribute("userRole");
-        bookingService.cancelBooking(id, userId, role);
+        String authHeader = httpRequest.getHeader("Authorization");
+        if (authHeader == null) {
+            authHeader = httpRequest.getHeader("authorization");
+        }
+        bookingService.cancelBooking(id, userId, role, authHeader);
         return ResponseEntity.noContent().build();
     }
-    
+
     /**
      * Check-in to booking
      * POST /api/bookings/checkin
@@ -161,15 +200,20 @@ public class BookingController {
             HttpServletRequest httpRequest) {
         Long userId = (Long) httpRequest.getAttribute("userId");
         String role = (String) httpRequest.getAttribute("userRole");
-        BookingResponse response = bookingService.checkIn(request.getQrCode(), userId, role);
+        String authHeader = httpRequest.getHeader("Authorization");
+        if (authHeader == null) {
+            authHeader = httpRequest.getHeader("authorization");
+        }
+        BookingResponse response = bookingService.checkIn(request.getQrCode(), userId, role, authHeader);
         return ResponseEntity.ok(response);
     }
-    
+
     /**
      * Get currently booked resource IDs (active bookings)
      * GET /api/bookings/booked-resources
      * Authorization: AUTHENTICATED (any role can see which resources are booked)
-     * Returns list of resource IDs that have active bookings (CONFIRMED or CHECKED_IN)
+     * Returns list of resource IDs that have active bookings (CONFIRMED or
+     * CHECKED_IN)
      */
     @GetMapping("/booked-resources")
     @RequiresRole
@@ -177,7 +221,7 @@ public class BookingController {
         List<Long> bookedResourceIds = bookingService.getBookedResourceIds();
         return ResponseEntity.ok(bookedResourceIds);
     }
-    
+
     /**
      * Health check endpoint
      * GET /api/bookings/health
