@@ -38,11 +38,12 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     Optional<Booking> findByQrCode(String qrCode);
     
     /**
-     * Find active bookings for a user (CONFIRMED or CHECKED_IN)
+     * Find active bookings for a user (CONFIRMED or CHECKED_IN and not yet ended)
      */
     @Query("SELECT b FROM Booking b WHERE b.userId = :userId AND " +
-           "(b.status = 'CONFIRMED' OR b.status = 'CHECKED_IN')")
-    List<Booking> findActiveBookingsByUserId(@Param("userId") Long userId);
+           "(b.status = 'CONFIRMED' OR b.status = 'CHECKED_IN') AND " +
+           "b.endTime > :now")
+    List<Booking> findActiveBookingsByUserId(@Param("userId") Long userId, @Param("now") LocalDateTime now);
     
     /**
      * Find bookings that overlap with given time range for a resource

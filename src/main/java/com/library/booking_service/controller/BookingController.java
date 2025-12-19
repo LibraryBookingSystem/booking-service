@@ -39,7 +39,6 @@ public class BookingController {
      * userId is extracted from JWT token
      */
     @PostMapping
-    @RequiresRole // Any authenticated user
     public ResponseEntity<BookingResponse> createBooking(
             @Valid @RequestBody CreateBookingRequest request,
             HttpServletRequest httpRequest) {
@@ -77,7 +76,6 @@ public class BookingController {
      * Resource Ownership: Users can view their own bookings, Admins can view any
      */
     @GetMapping("/{id}")
-    @RequiresRole
     @RequiresBookingOwnership(bookingIdParam = "id")
     public ResponseEntity<BookingResponse> getBookingById(
             @PathVariable Long id,
@@ -94,19 +92,17 @@ public class BookingController {
      * Get bookings by user ID
      * GET /api/bookings/user/{userId}
      * Authorization: AUTHENTICATED
-     * Resource Ownership: Users can only view their own bookings, Admins can view
-     * any
+     * Resource Ownership: Users can only view their own bookings, Faculty/Admins can view any
      */
     @GetMapping("/user/{userId}")
-    @RequiresRole
     public ResponseEntity<List<BookingResponse>> getBookingsByUserId(
             @PathVariable Long userId,
             HttpServletRequest request) {
         Long authenticatedUserId = (Long) request.getAttribute("userId");
         String role = (String) request.getAttribute("userRole");
 
-        // Check ownership: users can only view their own bookings, admins can view any
-        if (!authenticatedUserId.equals(userId) && !"ADMIN".equals(role)) {
+        // Check ownership: users can only view their own bookings, faculty/admins can view any
+        if (!authenticatedUserId.equals(userId) && !"ADMIN".equals(role) && !"FACULTY".equals(role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
 
@@ -124,7 +120,6 @@ public class BookingController {
      * Authorization: AUTHENTICATED (any role can see resource bookings)
      */
     @GetMapping("/resource/{resourceId}")
-    @RequiresRole
     public ResponseEntity<List<BookingResponse>> getBookingsByResourceId(
             @PathVariable Long resourceId,
             HttpServletRequest httpRequest) {
@@ -151,7 +146,6 @@ public class BookingController {
      * update any
      */
     @PutMapping("/{id}")
-    @RequiresRole
     @RequiresBookingOwnership(bookingIdParam = "id")
     public ResponseEntity<BookingResponse> updateBooking(
             @PathVariable Long id,
@@ -172,7 +166,6 @@ public class BookingController {
      * cancel any
      */
     @DeleteMapping("/{id}")
-    @RequiresRole
     @RequiresBookingOwnership(bookingIdParam = "id")
     public ResponseEntity<Void> cancelBooking(
             @PathVariable Long id,
@@ -194,7 +187,6 @@ public class BookingController {
      * Resource Ownership: Validated by service (QR code must belong to user)
      */
     @PostMapping("/checkin")
-    @RequiresRole
     public ResponseEntity<BookingResponse> checkIn(
             @Valid @RequestBody CheckInRequest request,
             HttpServletRequest httpRequest) {
@@ -216,7 +208,6 @@ public class BookingController {
      * CHECKED_IN)
      */
     @GetMapping("/booked-resources")
-    @RequiresRole
     public ResponseEntity<List<Long>> getBookedResourceIds() {
         List<Long> bookedResourceIds = bookingService.getBookedResourceIds();
         return ResponseEntity.ok(bookedResourceIds);

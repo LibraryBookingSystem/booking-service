@@ -80,8 +80,8 @@ public class BookingService {
                         "Resource is already booked for the requested time slot");
             }
 
-            // 4. Get current booking count for user
-            int currentBookingCount = bookingRepository.findActiveBookingsByUserId(userId).size();
+            // 4. Get current booking count for user (only future/current bookings)
+            int currentBookingCount = bookingRepository.findActiveBookingsByUserId(userId, LocalDateTime.now()).size();
 
             // 5. Validate against policies
             PolicyValidationRequest policyRequest = new PolicyValidationRequest(
@@ -214,7 +214,7 @@ public class BookingService {
         }
 
         // Validate with policy service
-        int currentBookingCount = bookingRepository.findActiveBookingsByUserId(userId).size();
+        int currentBookingCount = bookingRepository.findActiveBookingsByUserId(userId, LocalDateTime.now()).size();
         PolicyValidationRequest policyRequest = new PolicyValidationRequest(
                 newStartTime, newEndTime, userId, currentBookingCount);
 
@@ -278,8 +278,8 @@ public class BookingService {
         Booking booking = bookingRepository.findByQrCode(qrCode)
                 .orElseThrow(() -> new InvalidCheckInException("Invalid QR code"));
 
-        // Validate ownership: user must own the booking OR be an admin
-        if (!booking.getUserId().equals(userId) && !"ADMIN".equals(role)) {
+        // Validate ownership: user must own the booking OR be a faculty/admin (for manual check-in)
+        if (!booking.getUserId().equals(userId) && !"ADMIN".equals(role) && !"FACULTY".equals(role)) {
             throw new ForbiddenException(
                     "You do not have permission to check in to this booking");
         }

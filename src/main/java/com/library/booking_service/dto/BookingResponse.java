@@ -90,6 +90,8 @@ public class BookingResponse {
         return new BookingResponse(
                 booking.getId(),
                 booking.getUserId(),
+                null,  // userName - not available in this context
+                null,  // userEmail - not available in this context
                 booking.getResourceId(),
                 resourceName,
                 booking.getStartTime(),
