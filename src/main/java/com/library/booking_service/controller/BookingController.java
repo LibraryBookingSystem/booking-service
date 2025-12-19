@@ -143,7 +143,8 @@ public class BookingController {
             @PathVariable Long id,
             HttpServletRequest httpRequest) {
         Long userId = (Long) httpRequest.getAttribute("userId");
-        bookingService.cancelBooking(id, userId);
+        String role = (String) httpRequest.getAttribute("userRole");
+        bookingService.cancelBooking(id, userId, role);
         return ResponseEntity.noContent().build();
     }
     
@@ -162,6 +163,19 @@ public class BookingController {
         String role = (String) httpRequest.getAttribute("userRole");
         BookingResponse response = bookingService.checkIn(request.getQrCode(), userId, role);
         return ResponseEntity.ok(response);
+    }
+    
+    /**
+     * Get currently booked resource IDs (active bookings)
+     * GET /api/bookings/booked-resources
+     * Authorization: AUTHENTICATED (any role can see which resources are booked)
+     * Returns list of resource IDs that have active bookings (CONFIRMED or CHECKED_IN)
+     */
+    @GetMapping("/booked-resources")
+    @RequiresRole
+    public ResponseEntity<List<Long>> getBookedResourceIds() {
+        List<Long> bookedResourceIds = bookingService.getBookedResourceIds();
+        return ResponseEntity.ok(bookedResourceIds);
     }
     
     /**

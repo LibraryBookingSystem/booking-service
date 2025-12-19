@@ -11,7 +11,10 @@ public class BookingResponse {
     
     private Long id;
     private Long userId;
+    private String userName;
+    private String userEmail;
     private Long resourceId;
+    private String resourceName;
     private LocalDateTime startTime;
     private LocalDateTime endTime;
     private BookingStatus status;
@@ -23,12 +26,15 @@ public class BookingResponse {
     // Constructors
     public BookingResponse() {}
     
-    public BookingResponse(Long id, Long userId, Long resourceId, LocalDateTime startTime,
+    public BookingResponse(Long id, Long userId, String userName, String userEmail, Long resourceId, String resourceName, LocalDateTime startTime,
                           LocalDateTime endTime, BookingStatus status, String qrCode,
                           LocalDateTime checkedInAt, LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.id = id;
         this.userId = userId;
+        this.userName = userName;
+        this.userEmail = userEmail;
         this.resourceId = resourceId;
+        this.resourceName = resourceName;
         this.startTime = startTime;
         this.endTime = endTime;
         this.status = status;
@@ -42,10 +48,27 @@ public class BookingResponse {
      * Convert Booking entity to BookingResponse DTO
      */
     public static BookingResponse fromBooking(Booking booking) {
+        return fromBooking(booking, null, null, null);
+    }
+    
+    /**
+     * Convert Booking entity to BookingResponse DTO with resource name
+     */
+    public static BookingResponse fromBooking(Booking booking, String resourceName) {
+        return fromBooking(booking, resourceName, null, null);
+    }
+    
+    /**
+     * Convert Booking entity to BookingResponse DTO with resource name and user info
+     */
+    public static BookingResponse fromBooking(Booking booking, String resourceName, String userName, String userEmail) {
         return new BookingResponse(
             booking.getId(),
             booking.getUserId(),
+            userName,
+            userEmail,
             booking.getResourceId(),
+            resourceName,
             booking.getStartTime(),
             booking.getEndTime(),
             booking.getStatus(),
@@ -73,12 +96,36 @@ public class BookingResponse {
         this.userId = userId;
     }
     
+    public String getUserName() {
+        return userName;
+    }
+    
+    public void setUserName(String userName) {
+        this.userName = userName;
+    }
+    
+    public String getUserEmail() {
+        return userEmail;
+    }
+    
+    public void setUserEmail(String userEmail) {
+        this.userEmail = userEmail;
+    }
+    
     public Long getResourceId() {
         return resourceId;
     }
     
     public void setResourceId(Long resourceId) {
         this.resourceId = resourceId;
+    }
+    
+    public String getResourceName() {
+        return resourceName;
+    }
+    
+    public void setResourceName(String resourceName) {
+        this.resourceName = resourceName;
     }
     
     public LocalDateTime getStartTime() {

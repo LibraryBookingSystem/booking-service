@@ -66,8 +66,8 @@ public class BookingService {
             // 1. Verify user is not restricted
             verifyUserNotRestricted(userId);
             
-            // 2. Verify resource exists and is available
-            verifyResourceAvailable(request.getResourceId());
+            // 2. Verify resource exists and is available, get resource name
+            String resourceName = verifyResourceAvailable(request.getResourceId());
             
             // 3. Check for overlapping bookings
             List<Booking> overlapping = bookingRepository.findOverlappingBookings(
@@ -106,7 +106,7 @@ public class BookingService {
             booking = bookingRepository.save(booking);
             logger.info("Booking created successfully: {} (ID: {})", booking.getQrCode(), booking.getId());
             
-            BookingResponse response = BookingResponse.fromBooking(booking);
+            BookingResponse response = BookingResponse.fromBooking(booking, resourceName);
             eventPublisher.publishBookingCreated(response);
             
             return response;
@@ -120,11 +120,16 @@ public class BookingService {
     }
     
     /**
-     * Get all bookings
+     * Get all bookings (admin endpoint - includes user info)
      */
     public List<BookingResponse> getAllBookings() {
         return bookingRepository.findAll().stream()
-            .map(BookingResponse::fromBooking)
+            .map(booking -> {
+                String resourceName = getResourceName(booking.getResourceId());
+                Map<String, String> userInfo = getUserInfo(booking.getUserId());
+                return BookingResponse.fromBooking(booking, resourceName, 
+                    userInfo.get("name"), userInfo.get("email"));
+            })
             .collect(Collectors.toList());
     }
     
@@ -134,7 +139,7 @@ public class BookingService {
     public BookingResponse getBookingById(Long id) {
         Booking booking = bookingRepository.findById(id)
             .orElseThrow(() -> new BookingNotFoundException("Booking not found with id: " + id));
-        return BookingResponse.fromBooking(booking);
+        return BookingResponse.fromBooking(booking, getResourceName(booking.getResourceId()));
     }
     
     /**
@@ -142,7 +147,7 @@ public class BookingService {
      */
     public List<BookingResponse> getBookingsByUserId(Long userId) {
         return bookingRepository.findByUserId(userId).stream()
-            .map(BookingResponse::fromBooking)
+            .map(booking -> BookingResponse.fromBooking(booking, getResourceName(booking.getResourceId())))
             .collect(Collectors.toList());
     }
     
@@ -150,9 +155,19 @@ public class BookingService {
      * Get bookings by resource ID
      */
     public List<BookingResponse> getBookingsByResourceId(Long resourceId) {
+        String resourceName = getResourceName(resourceId);
         return bookingRepository.findByResourceId(resourceId).stream()
-            .map(BookingResponse::fromBooking)
+            .map(booking -> BookingResponse.fromBooking(booking, resourceName))
             .collect(Collectors.toList());
+    }
+    
+    /**
+     * Get list of resource IDs that currently have active bookings
+     * Active means CONFIRMED or CHECKED_IN status with current time within booking window
+     */
+    public List<Long> getBookedResourceIds() {
+        LocalDateTime now = LocalDateTime.now();
+        return bookingRepository.findCurrentlyBookedResourceIds(now);
     }
     
     /**
@@ -205,7 +220,8 @@ public class BookingService {
         
         logger.info("Booking updated successfully: {} (ID: {})", booking.getQrCode(), booking.getId());
         
-        BookingResponse response = BookingResponse.fromBooking(booking);
+        String resourceName = getResourceName(booking.getResourceId());
+        BookingResponse response = BookingResponse.fromBooking(booking, resourceName);
         eventPublisher.publishBookingUpdated(response);
         
         return response;
@@ -215,14 +231,14 @@ public class BookingService {
      * Cancel booking
      */
     @Transactional
-    public void cancelBooking(Long id, Long userId) {
-        logger.info("Canceling booking: {}", id);
+    public void cancelBooking(Long id, Long userId, String role) {
+        logger.info("Canceling booking: {} by user: {} (role: {})", id, userId, role);
         
         Booking booking = bookingRepository.findById(id)
             .orElseThrow(() -> new BookingNotFoundException("Booking not found with id: " + id));
         
-        // Verify ownership
-        if (!booking.getUserId().equals(userId)) {
+        // Verify ownership: user must own the booking OR be an admin
+        if (!booking.getUserId().equals(userId) && !"ADMIN".equals(role)) {
             throw new BookingNotFoundException("Booking not found with id: " + id);
         }
         
@@ -237,7 +253,8 @@ public class BookingService {
         
         logger.info("Booking canceled successfully: {} (ID: {})", booking.getQrCode(), id);
         
-        eventPublisher.publishBookingCanceled(BookingResponse.fromBooking(booking));
+        String resourceName = getResourceName(booking.getResourceId());
+        eventPublisher.publishBookingCanceled(BookingResponse.fromBooking(booking, resourceName));
     }
     
     /**
@@ -281,7 +298,8 @@ public class BookingService {
         
         logger.info("Check-in successful for booking: {} (ID: {})", booking.getQrCode(), booking.getId());
         
-        BookingResponse response = BookingResponse.fromBooking(booking);
+        String resourceName = getResourceName(booking.getResourceId());
+        BookingResponse response = BookingResponse.fromBooking(booking, resourceName);
         eventPublisher.publishBookingCheckedIn(response);
         
         return response;
@@ -305,7 +323,8 @@ public class BookingService {
             
             logger.info("Marked booking as no-show: {} (ID: {})", booking.getQrCode(), booking.getId());
             
-            eventPublisher.publishBookingNoShow(BookingResponse.fromBooking(booking));
+            String resourceName = getResourceName(booking.getResourceId());
+            eventPublisher.publishBookingNoShow(BookingResponse.fromBooking(booking, resourceName));
         }
         
         logger.info("Processed {} no-show bookings", noShowBookings.size());
@@ -337,9 +356,9 @@ public class BookingService {
     }
     
     /**
-     * Verify resource exists and is available
+     * Verify resource exists and is available, returns resource name
      */
-    private void verifyResourceAvailable(Long resourceId) {
+    private String verifyResourceAvailable(Long resourceId) {
         try {
             String url = catalogServiceUrl + "/api/resources/" + resourceId;
             logger.debug("Checking resource availability at: {}", url);
@@ -357,7 +376,12 @@ public class BookingService {
             }
             
             logger.debug("Resource {} is available", resourceId);
-            // Could also check resource status here if needed
+            
+            // Extract resource name from response
+            if (response.getBody() != null && response.getBody().containsKey("name")) {
+                return (String) response.getBody().get("name");
+            }
+            return "Resource " + resourceId;
         } catch (org.springframework.web.client.HttpClientErrorException.NotFound e) {
             logger.error("Resource not found: {} - {}", resourceId, e.getMessage());
             throw new ResourceUnavailableException("Resource not found: " + resourceId);
@@ -365,6 +389,60 @@ public class BookingService {
             logger.error("Failed to verify resource {}: {} - Error: {}", resourceId, e.getMessage(), e.getClass().getName(), e);
             throw new ResourceUnavailableException("Failed to verify resource availability: " + e.getMessage());
         }
+    }
+    
+    /**
+     * Get resource name by ID (for existing bookings)
+     */
+    private String getResourceName(Long resourceId) {
+        try {
+            String url = catalogServiceUrl + "/api/resources/" + resourceId;
+            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+                url,
+                HttpMethod.GET,
+                null,
+                new ParameterizedTypeReference<Map<String, Object>>() {}
+            );
+            
+            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
+                return (String) response.getBody().getOrDefault("name", "Resource " + resourceId);
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to get resource name for {}: {}", resourceId, e.getMessage());
+        }
+        return "Resource " + resourceId;
+    }
+    
+    /**
+     * Get user info by ID (for admin booking list)
+     */
+    private Map<String, String> getUserInfo(Long userId) {
+        Map<String, String> userInfo = new java.util.HashMap<>();
+        userInfo.put("name", "User " + userId);
+        userInfo.put("email", "");
+        
+        try {
+            String url = userServiceUrl + "/api/users/" + userId;
+            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+                url,
+                HttpMethod.GET,
+                null,
+                new ParameterizedTypeReference<Map<String, Object>>() {}
+            );
+            
+            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
+                Map<String, Object> body = response.getBody();
+                if (body.containsKey("name")) {
+                    userInfo.put("name", (String) body.get("name"));
+                }
+                if (body.containsKey("email")) {
+                    userInfo.put("email", (String) body.get("email"));
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to get user info for {}: {}", userId, e.getMessage());
+        }
+        return userInfo;
     }
     
     /**

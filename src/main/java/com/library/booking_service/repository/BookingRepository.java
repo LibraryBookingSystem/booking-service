@@ -64,6 +64,15 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
            "b.startTime >= :gracePeriodStart")
     List<Booking> findNoShowBookings(@Param("currentTime") LocalDateTime currentTime,
                                     @Param("gracePeriodStart") LocalDateTime gracePeriodStart);
+    
+    /**
+     * Find resource IDs that have active bookings at the current time
+     * Active means CONFIRMED or CHECKED_IN status with current time within booking window
+     */
+    @Query("SELECT DISTINCT b.resourceId FROM Booking b WHERE " +
+           "(b.status = 'CONFIRMED' OR b.status = 'CHECKED_IN') AND " +
+           "b.startTime <= :currentTime AND b.endTime > :currentTime")
+    List<Long> findCurrentlyBookedResourceIds(@Param("currentTime") LocalDateTime currentTime);
 }
 
 
