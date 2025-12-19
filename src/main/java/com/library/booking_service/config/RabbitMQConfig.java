@@ -16,6 +16,7 @@ public class RabbitMQConfig {
     
     // Exchange names
     public static final String BOOKING_EXCHANGE = "booking.events";
+    public static final String AUDIT_EXCHANGE = "audit.events";
     
     // Queue names
     public static final String BOOKING_CREATED_QUEUE = "booking.created";
@@ -32,11 +33,16 @@ public class RabbitMQConfig {
     public static final String BOOKING_NO_SHOW_ROUTING_KEY = "booking.no_show";
     
     /**
-     * Create topic exchange for booking events
+     * Create topic exchanges
      */
     @Bean
     public TopicExchange bookingExchange() {
         return new TopicExchange(BOOKING_EXCHANGE);
+    }
+    
+    @Bean
+    public TopicExchange auditExchange() {
+        return new TopicExchange(AUDIT_EXCHANGE, true, false);
     }
     
     /**
