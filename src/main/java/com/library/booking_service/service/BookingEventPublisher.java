@@ -85,6 +85,19 @@ public class BookingEventPublisher {
             logger.error("Failed to publish booking.no_show event: {}", e.getMessage());
         }
     }
+    
+    public void publishBookingCompleted(BookingResponse booking) {
+        try {
+            rabbitTemplate.convertAndSend(
+                RabbitMQConfig.BOOKING_EXCHANGE,
+                RabbitMQConfig.BOOKING_COMPLETED_ROUTING_KEY,
+                booking
+            );
+            logger.info("Published booking.completed event for booking: {}", booking.getId());
+        } catch (Exception e) {
+            logger.error("Failed to publish booking.completed event: {}", e.getMessage());
+        }
+    }
 }
 
 

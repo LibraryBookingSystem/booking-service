@@ -74,6 +74,15 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
            "(b.status = 'CONFIRMED' OR b.status = 'CHECKED_IN') AND " +
            "b.startTime <= :currentTime AND b.endTime > :currentTime")
     List<Long> findCurrentlyBookedResourceIds(@Param("currentTime") LocalDateTime currentTime);
+    
+    /**
+     * Find expired bookings that should be marked as COMPLETED
+     * Expired means endTime has passed and status is CONFIRMED or CHECKED_IN
+     */
+    @Query("SELECT b FROM Booking b WHERE " +
+           "(b.status = 'CONFIRMED' OR b.status = 'CHECKED_IN') AND " +
+           "b.endTime <= :currentTime")
+    List<Booking> findExpiredBookings(@Param("currentTime") LocalDateTime currentTime);
 }
 
 

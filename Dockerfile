@@ -24,6 +24,8 @@ FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar
 EXPOSE 3004
+# Use system timezone (will use host machine's timezone)
+# Times are still stored in UTC in database (best practice)
 ENTRYPOINT ["java", "-jar", "app.jar"]
 
 

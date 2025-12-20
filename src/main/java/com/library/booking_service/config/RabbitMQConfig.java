@@ -24,6 +24,7 @@ public class RabbitMQConfig {
     public static final String BOOKING_CANCELED_QUEUE = "booking.canceled";
     public static final String BOOKING_CHECKED_IN_QUEUE = "booking.checked_in";
     public static final String BOOKING_NO_SHOW_QUEUE = "booking.no_show";
+    public static final String BOOKING_COMPLETED_QUEUE = "booking.completed";
     
     // Routing keys
     public static final String BOOKING_CREATED_ROUTING_KEY = "booking.created";
@@ -31,6 +32,7 @@ public class RabbitMQConfig {
     public static final String BOOKING_CANCELED_ROUTING_KEY = "booking.canceled";
     public static final String BOOKING_CHECKED_IN_ROUTING_KEY = "booking.checked_in";
     public static final String BOOKING_NO_SHOW_ROUTING_KEY = "booking.no_show";
+    public static final String BOOKING_COMPLETED_ROUTING_KEY = "booking.completed";
     
     /**
      * Create topic exchanges
@@ -71,6 +73,11 @@ public class RabbitMQConfig {
     @Bean
     public Queue bookingNoShowQueue() {
         return new Queue(BOOKING_NO_SHOW_QUEUE, true);
+    }
+    
+    @Bean
+    public Queue bookingCompletedQueue() {
+        return new Queue(BOOKING_COMPLETED_QUEUE, true);
     }
     
     /**
@@ -114,6 +121,14 @@ public class RabbitMQConfig {
             .bind(bookingNoShowQueue())
             .to(bookingExchange())
             .with(BOOKING_NO_SHOW_ROUTING_KEY);
+    }
+    
+    @Bean
+    public Binding bookingCompletedBinding() {
+        return BindingBuilder
+            .bind(bookingCompletedQueue())
+            .to(bookingExchange())
+            .with(BOOKING_COMPLETED_ROUTING_KEY);
     }
     
     /**
