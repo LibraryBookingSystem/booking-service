@@ -88,7 +88,8 @@ public class BookingService {
             }
 
             // 4. Get current booking count for user (only future/current bookings)
-            int currentBookingCount = bookingRepository.findActiveBookingsByUserId(userId, LocalDateTime.now(ZoneOffset.UTC)).size();
+            int currentBookingCount = bookingRepository
+                    .findActiveBookingsByUserId(userId, LocalDateTime.now(ZoneOffset.UTC)).size();
 
             // 5. Validate against policies
             PolicyValidationRequest policyRequest = new PolicyValidationRequest(
@@ -163,19 +164,19 @@ public class BookingService {
     public List<BookingResponse> getBookingsByUserId(Long userId, String authToken) {
         List<Booking> bookings = bookingRepository.findByUserId(userId);
         logger.info("Found {} bookings for user {}", bookings.size(), userId);
-        
+
         if (bookings.isEmpty()) {
             logger.warn("No bookings found for user {}", userId);
             return Collections.emptyList();
         }
-        
+
         // Log each booking found
         for (Booking booking : bookings) {
-            logger.debug("Booking {}: user={}, resource={}, status={}, start={}, end={}", 
-                    booking.getId(), booking.getUserId(), booking.getResourceId(), 
+            logger.debug("Booking {}: user={}, resource={}, status={}, start={}, end={}",
+                    booking.getId(), booking.getUserId(), booking.getResourceId(),
                     booking.getStatus(), booking.getStartTime(), booking.getEndTime());
         }
-        
+
         // Fetch resource names in parallel to avoid sequential timeouts
         List<BookingResponse> responses = bookings.parallelStream()
                 .map(booking -> {
@@ -185,14 +186,14 @@ public class BookingService {
                         logger.debug("Created response for booking {}: resourceName={}", booking.getId(), resourceName);
                         return response;
                     } catch (Exception e) {
-                        logger.warn("Failed to fetch resource name for booking {}: {}", 
+                        logger.warn("Failed to fetch resource name for booking {}: {}",
                                 booking.getId(), e.getMessage());
                         // Return booking with "Unknown Resource" instead of failing completely
                         return BookingResponse.fromBooking(booking, "Unknown Resource");
                     }
                 })
                 .collect(Collectors.toList());
-        
+
         logger.info("Returning {} booking responses for user {}", responses.size(), userId);
         return responses;
     }
@@ -252,7 +253,8 @@ public class BookingService {
         }
 
         // Validate with policy service
-        int currentBookingCount = bookingRepository.findActiveBookingsByUserId(userId, LocalDateTime.now(ZoneOffset.UTC)).size();
+        int currentBookingCount = bookingRepository
+                .findActiveBookingsByUserId(userId, LocalDateTime.now(ZoneOffset.UTC)).size();
         PolicyValidationRequest policyRequest = new PolicyValidationRequest(
                 newStartTime, newEndTime, userId, currentBookingCount);
 
@@ -323,7 +325,8 @@ public class BookingService {
         Booking booking = bookingRepository.findByQrCode(qrCode)
                 .orElseThrow(() -> new InvalidCheckInException("Invalid QR code"));
 
-        // Validate ownership: user must own the booking OR be a faculty/admin (for manual check-in)
+        // Validate ownership: user must own the booking OR be a faculty/admin (for
+        // manual check-in)
         if (!booking.getUserId().equals(userId) && !"ADMIN".equals(role) && !"FACULTY".equals(role)) {
             throw new ForbiddenException(
                     "You do not have permission to check in to this booking");
@@ -332,7 +335,7 @@ public class BookingService {
         // Validate check-in
         // Use UTC time for comparison since booking times are stored in UTC
         LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
-        logger.debug("Check-in time comparison - Current UTC time: {}, Booking start: {}, Booking end: {}", 
+        logger.debug("Check-in time comparison - Current UTC time: {}, Booking start: {}, Booking end: {}",
                 now, booking.getStartTime(), booking.getEndTime());
 
         if (booking.getStatus() != BookingStatus.CONFIRMED) {
@@ -341,31 +344,35 @@ public class BookingService {
         }
 
         // Grace Period Definition:
-        // Grace period is the time window after the booking start time during which check-in is allowed.
-        // It represents the maximum time after startTime that a user can check in to their booking.
-        // Example: If grace period is 15 minutes, check-in is allowed from startTime to startTime + 15 minutes.
-        
+        // Grace period is the time window after the booking start time during which
+        // check-in is allowed.
+        // It represents the maximum time after startTime that a user can check in to
+        // their booking.
+        // Example: If grace period is 15 minutes, check-in is allowed from startTime to
+        // startTime + 15 minutes.
+
         // Get grace period from policy service
         int gracePeriodMinutes = getGracePeriodFromPolicy(authToken);
         LocalDateTime gracePeriodEnd = booking.getStartTime().plusMinutes(gracePeriodMinutes);
-        
+
         // Check if check-in is too early (before booking start time)
         if (now.isBefore(booking.getStartTime())) {
             throw new InvalidCheckInException("Check-in is too early. Booking starts at: " + booking.getStartTime());
         }
-        
+
         // Enforce grace period: Check-in must be within grace period after start time
         // However, if booking is ongoing (current time between startTime and endTime),
         // allow check-in even if past grace period to support ongoing bookings
         boolean isWithinGracePeriod = !now.isAfter(gracePeriodEnd);
         boolean isOngoingBooking = !now.isBefore(booking.getStartTime()) && !now.isAfter(booking.getEndTime());
-        
+
         if (!isWithinGracePeriod && !isOngoingBooking) {
             throw new InvalidCheckInException(
-                    String.format("Check-in grace period has expired. Grace period ended at: %s (grace period: %d minutes)",
+                    String.format(
+                            "Check-in grace period has expired. Grace period ended at: %s (grace period: %d minutes)",
                             gracePeriodEnd, gracePeriodMinutes));
         }
-        
+
         // Check if booking has ended
         if (now.isAfter(booking.getEndTime())) {
             throw new InvalidCheckInException("Check-in window has expired. Booking ended at: " + booking.getEndTime());
@@ -395,11 +402,14 @@ public class BookingService {
         LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
         LocalDateTime gracePeriodStart = now.minusMinutes(gracePeriodMinutes);
 
-        List<Booking> noShowBookings = bookingRepository.findNoShowBookings(now, gracePeriodStart);
+        List<Booking> noShowBookings = bookingRepository.findNoShowBookings(gracePeriodStart);
 
         for (Booking booking : noShowBookings) {
             booking.setStatus(BookingStatus.NO_SHOW);
             bookingRepository.save(booking);
+
+            // Cancel any scheduled task since we are handling completion here
+            bookingScheduler.cancelScheduledTask(booking.getId());
 
             logger.info("Marked booking as no-show: {} (ID: {})", booking.getQrCode(), booking.getId());
 
@@ -430,9 +440,9 @@ public class BookingService {
         }
 
         // Only process if still in active status
-        if (booking.getStatus() != BookingStatus.CONFIRMED && 
-            booking.getStatus() != BookingStatus.CHECKED_IN) {
-            logger.debug("Booking {} already in status {}, skipping completion", 
+        if (booking.getStatus() != BookingStatus.CONFIRMED &&
+                booking.getStatus() != BookingStatus.CHECKED_IN) {
+            logger.debug("Booking {} already in status {}, skipping completion",
                     bookingId, booking.getStatus());
             return;
         }
@@ -440,7 +450,7 @@ public class BookingService {
         // Double-check that endTime has passed
         LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
         if (booking.getEndTime().isAfter(now)) {
-            logger.warn("Booking {} endTime {} hasn't passed yet, rescheduling", 
+            logger.warn("Booking {} endTime {} hasn't passed yet, rescheduling",
                     bookingId, booking.getEndTime());
             // Reschedule for the correct time
             bookingScheduler.scheduleBookingCompletion(bookingId, booking.getEndTime());
@@ -449,19 +459,19 @@ public class BookingService {
 
         // Determine final status based on whether user checked in
         boolean userCheckedIn = booking.getStatus() == BookingStatus.CHECKED_IN;
-        
+
         if (userCheckedIn) {
             // User checked in → successful booking → COMPLETED
             booking.setStatus(BookingStatus.COMPLETED);
-            logger.info("Marked booking as completed (user checked in): {} (ID: {}), resourceId: {}, endTime: {}", 
+            logger.info("Marked booking as completed (user checked in): {} (ID: {}), resourceId: {}, endTime: {}",
                     booking.getQrCode(), booking.getId(), booking.getResourceId(), booking.getEndTime());
         } else {
-            // User never checked in → no-show → CANCELED
-            booking.setStatus(BookingStatus.CANCELED);
-            logger.info("Marked booking as canceled (user never checked in): {} (ID: {}), resourceId: {}, endTime: {}", 
+            // User never checked in → no-show → NO_SHOW
+            booking.setStatus(BookingStatus.NO_SHOW);
+            logger.info("Marked booking as no-show (user never checked in): {} (ID: {}), resourceId: {}, endTime: {}",
                     booking.getQrCode(), booking.getId(), booking.getResourceId(), booking.getEndTime());
         }
-        
+
         bookingRepository.save(booking);
 
         // Check if there are other active bookings for this resource
@@ -473,25 +483,25 @@ public class BookingService {
             try {
                 String resourceName = getResourceName(booking.getResourceId(), authToken);
                 BookingResponse response = BookingResponse.fromBooking(booking, resourceName);
-                
+
                 if (userCheckedIn) {
                     eventPublisher.publishBookingCompleted(response);
-                    logger.info("Published booking.completed event for resource {} (no other active bookings)", 
+                    logger.info("Published booking.completed event for resource {} (no other active bookings)",
                             booking.getResourceId());
                 } else {
-                    eventPublisher.publishBookingCanceled(response);
-                    logger.info("Published booking.canceled event for resource {} (no other active bookings)", 
+                    eventPublisher.publishBookingNoShow(response);
+                    logger.info("Published booking.noshow event for resource {} (no other active bookings)",
                             booking.getResourceId());
                 }
             } catch (Exception e) {
-                logger.warn("Failed to fetch resource name for booking {}: {}", 
+                logger.warn("Failed to fetch resource name for booking {}: {}",
                         booking.getId(), e.getMessage());
                 // Still publish event even if resource name fetch fails
                 BookingResponse response = BookingResponse.fromBooking(booking, "Unknown Resource");
                 if (userCheckedIn) {
                     eventPublisher.publishBookingCompleted(response);
                 } else {
-                    eventPublisher.publishBookingCanceled(response);
+                    eventPublisher.publishBookingNoShow(response);
                 }
             }
         } else {
@@ -543,10 +553,10 @@ public class BookingService {
                 logger.error("Catalog service URL is not configured");
                 throw new ResourceUnavailableException("Catalog service is not available");
             }
-            
+
             String url = catalogServiceUrl + "/api/resources/" + resourceId;
             logger.debug("Checking resource availability at: {}", url);
-            
+
             if (url == null || url.isEmpty() || !url.startsWith("http")) {
                 logger.error("Invalid URL constructed: {}", url);
                 throw new ResourceUnavailableException("Invalid catalog service URL configuration");
@@ -576,13 +586,14 @@ public class BookingService {
             logger.error("Resource not found: {} - {}", resourceId, e.getMessage());
             throw new ResourceUnavailableException("Resource not found: " + resourceId);
         } catch (RestClientException e) {
-            logger.error("Failed to verify resource {}: {} - Error: {} - URL was: {}", 
-                    resourceId, e.getMessage(), e.getClass().getName(), 
+            logger.error("Failed to verify resource {}: {} - Error: {} - URL was: {}",
+                    resourceId, e.getMessage(), e.getClass().getName(),
                     catalogServiceUrl + "/api/resources/" + resourceId, e);
             throw new ResourceUnavailableException("Failed to verify resource availability: " + e.getMessage());
         } catch (Exception e) {
-            String attemptedUrl = catalogServiceUrl != null ? catalogServiceUrl + "/api/resources/" + resourceId : "null";
-            logger.error("Unexpected error verifying resource {}: {} - Attempted URL: {}", 
+            String attemptedUrl = catalogServiceUrl != null ? catalogServiceUrl + "/api/resources/" + resourceId
+                    : "null";
+            logger.error("Unexpected error verifying resource {}: {} - Attempted URL: {}",
                     resourceId, e.getMessage(), attemptedUrl, e);
             throw new ResourceUnavailableException("Failed to verify resource availability: " + e.getMessage());
         }
@@ -707,10 +718,12 @@ public class BookingService {
 
     /**
      * Get grace period from policy service
-     * Grace period is the time window after booking start time during which check-in is allowed
+     * Grace period is the time window after booking start time during which
+     * check-in is allowed
      * 
      * @param authToken Authentication token for policy service call
-     * @return Grace period in minutes (defaults to 15 if policy service is unavailable)
+     * @return Grace period in minutes (defaults to 15 if policy service is
+     *         unavailable)
      */
     private int getGracePeriodFromPolicy(String authToken) {
         try {
@@ -730,7 +743,8 @@ public class BookingService {
                     new ParameterizedTypeReference<List<Map<String, Object>>>() {
                     });
 
-            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null && !response.getBody().isEmpty()) {
+            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null
+                    && !response.getBody().isEmpty()) {
                 Map<String, Object> activePolicy = response.getBody().get(0);
                 Object gracePeriodObj = activePolicy.get("gracePeriodMinutes");
                 if (gracePeriodObj != null) {
@@ -748,10 +762,12 @@ public class BookingService {
             logger.warn("Policy service unavailable (connection failed): {} - Using default grace period of 15 minutes",
                     e.getMessage());
         } catch (RestClientException e) {
-            logger.warn("Failed to fetch grace period from policy service: {} - Using default grace period of 15 minutes",
+            logger.warn(
+                    "Failed to fetch grace period from policy service: {} - Using default grace period of 15 minutes",
                     e.getMessage());
         } catch (Exception e) {
-            logger.warn("Unexpected error fetching grace period from policy service: {} - Using default grace period of 15 minutes",
+            logger.warn(
+                    "Unexpected error fetching grace period from policy service: {} - Using default grace period of 15 minutes",
                     e.getMessage());
         }
 

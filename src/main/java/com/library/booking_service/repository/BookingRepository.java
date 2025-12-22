@@ -16,76 +16,75 @@ import java.util.Optional;
  */
 @Repository
 public interface BookingRepository extends JpaRepository<Booking, Long> {
-    
-    /**
-     * Find bookings by user ID
-     */
-    List<Booking> findByUserId(Long userId);
-    
-    /**
-     * Find bookings by resource ID
-     */
-    List<Booking> findByResourceId(Long resourceId);
-    
-    /**
-     * Find bookings by status
-     */
-    List<Booking> findByStatus(BookingStatus status);
-    
-    /**
-     * Find booking by QR code
-     */
-    Optional<Booking> findByQrCode(String qrCode);
-    
-    /**
-     * Find active bookings for a user (CONFIRMED or CHECKED_IN and not yet ended)
-     */
-    @Query("SELECT b FROM Booking b WHERE b.userId = :userId AND " +
-           "(b.status = 'CONFIRMED' OR b.status = 'CHECKED_IN') AND " +
-           "b.endTime > :now")
-    List<Booking> findActiveBookingsByUserId(@Param("userId") Long userId, @Param("now") LocalDateTime now);
-    
-    /**
-     * Find bookings that overlap with given time range for a resource
-     */
-    @Query("SELECT b FROM Booking b WHERE b.resourceId = :resourceId AND " +
-           "b.status IN ('CONFIRMED', 'CHECKED_IN', 'PENDING') AND " +
-           "((b.startTime <= :startTime AND b.endTime > :startTime) OR " +
-           "(b.startTime < :endTime AND b.endTime >= :endTime) OR " +
-           "(b.startTime >= :startTime AND b.endTime <= :endTime))")
-    List<Booking> findOverlappingBookings(@Param("resourceId") Long resourceId,
-                                         @Param("startTime") LocalDateTime startTime,
-                                         @Param("endTime") LocalDateTime endTime);
-    
-    /**
-     * Find confirmed bookings that haven't been checked in and are past grace period
-     */
-    @Query("SELECT b FROM Booking b WHERE b.status = 'CONFIRMED' AND " +
-           "b.startTime <= :currentTime AND " +
-           "b.startTime >= :gracePeriodStart")
-    List<Booking> findNoShowBookings(@Param("currentTime") LocalDateTime currentTime,
-                                    @Param("gracePeriodStart") LocalDateTime gracePeriodStart);
-    
-    /**
-     * Find resource IDs that have active bookings at the current time
-     * Active means CONFIRMED or CHECKED_IN status with current time within booking window
-     */
-    @Query("SELECT DISTINCT b.resourceId FROM Booking b WHERE " +
-           "(b.status = 'CONFIRMED' OR b.status = 'CHECKED_IN') AND " +
-           "b.startTime <= :currentTime AND b.endTime > :currentTime")
-    List<Long> findCurrentlyBookedResourceIds(@Param("currentTime") LocalDateTime currentTime);
-    
-    /**
-     * Find expired bookings that should be marked as COMPLETED
-     * Expired means endTime has passed and status is CONFIRMED or CHECKED_IN
-     */
-    @Query("SELECT b FROM Booking b WHERE " +
-           "(b.status = 'CONFIRMED' OR b.status = 'CHECKED_IN') AND " +
-           "b.endTime <= :currentTime")
-    List<Booking> findExpiredBookings(@Param("currentTime") LocalDateTime currentTime);
+
+       /**
+        * Find bookings by user ID
+        */
+       List<Booking> findByUserId(Long userId);
+
+       /**
+        * Find bookings by resource ID
+        */
+       List<Booking> findByResourceId(Long resourceId);
+
+       /**
+        * Find bookings by status
+        */
+       List<Booking> findByStatus(BookingStatus status);
+
+       /**
+        * Find booking by QR code
+        */
+       Optional<Booking> findByQrCode(String qrCode);
+
+       /**
+        * Find active bookings for a user (CONFIRMED or CHECKED_IN and not yet ended)
+        */
+       @Query("SELECT b FROM Booking b WHERE b.userId = :userId AND " +
+                     "(b.status = 'CONFIRMED' OR b.status = 'CHECKED_IN') AND " +
+                     "b.endTime > :now")
+       List<Booking> findActiveBookingsByUserId(@Param("userId") Long userId, @Param("now") LocalDateTime now);
+
+       /**
+        * Find bookings that overlap with given time range for a resource
+        */
+       @Query("SELECT b FROM Booking b WHERE b.resourceId = :resourceId AND " +
+                     "b.status IN ('CONFIRMED', 'CHECKED_IN', 'PENDING') AND " +
+                     "((b.startTime <= :startTime AND b.endTime > :startTime) OR " +
+                     "(b.startTime < :endTime AND b.endTime >= :endTime) OR " +
+                     "(b.startTime >= :startTime AND b.endTime <= :endTime))")
+       List<Booking> findOverlappingBookings(@Param("resourceId") Long resourceId,
+                     @Param("startTime") LocalDateTime startTime,
+                     @Param("endTime") LocalDateTime endTime);
+
+       /**
+        * Find confirmed bookings that haven't been checked in and are past grace
+        * period
+        */
+       /**
+        * Find confirmed bookings that haven't been checked in and are past grace
+        * period
+        */
+       @Query("SELECT b FROM Booking b WHERE b.status = 'CONFIRMED' AND " +
+                     "b.startTime < :gracePeriodLimit")
+       List<Booking> findNoShowBookings(@Param("gracePeriodLimit") LocalDateTime gracePeriodLimit);
+
+       /**
+        * Find resource IDs that have active bookings at the current time
+        * Active means CONFIRMED or CHECKED_IN status with current time within booking
+        * window
+        */
+       @Query("SELECT DISTINCT b.resourceId FROM Booking b WHERE " +
+                     "(b.status = 'CONFIRMED' OR b.status = 'CHECKED_IN') AND " +
+                     "b.startTime <= :currentTime AND b.endTime > :currentTime")
+       List<Long> findCurrentlyBookedResourceIds(@Param("currentTime") LocalDateTime currentTime);
+
+       /**
+        * Find expired bookings that should be marked as COMPLETED
+        * Expired means endTime has passed and status is CONFIRMED or CHECKED_IN
+        */
+       @Query("SELECT b FROM Booking b WHERE " +
+                     "(b.status = 'CONFIRMED' OR b.status = 'CHECKED_IN') AND " +
+                     "b.endTime <= :currentTime")
+       List<Booking> findExpiredBookings(@Param("currentTime") LocalDateTime currentTime);
 }
-
-
-
-
-
